@@ -73,6 +73,29 @@ ADouble& ADouble::operator=(ADouble&& other) noexcept {
     return *this;
 }
 
+// ============================================================================
+// ADouble Compound Assignments
+// ============================================================================
+ADouble& ADouble::operator+=(const ADouble& other) {
+    *this = *this + other; // Relies on the already overloaded operator+
+    return *this;
+}
+
+ADouble& ADouble::operator-=(const ADouble& other) {
+    *this = *this - other; // Relies on the already overloaded operator-
+    return *this;
+}
+
+ADouble& ADouble::operator*=(const ADouble& other) {
+    *this = *this * other; // Relies on the already overloaded operator*
+    return *this;
+}
+
+ADouble& ADouble::operator/=(const ADouble& other) {
+    *this = *this / other; // Relies on the already overloaded operator/
+    return *this;
+}
+
 Parameter::Parameter(double v) : val(v), current_tape_id(-1), m(0.0), v(0.0), t(0) {}
 
 // Copy Constructor
