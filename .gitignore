@@ -1,7 +1,0 @@
-# build outputs
-bin
-*.exe
-*.o
-*.a
-*.so
-*.d
