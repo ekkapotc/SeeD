@@ -1,5 +1,6 @@
 #include <iostream>
 #include <vector>
+#include <cstddef>
 #include <cmath>
 #include "ad_core.hpp"
 
@@ -32,12 +33,12 @@ int main() {
 
     // 4. Training Loop
     for (int epoch = 0; epoch <= epochs; ++epoch) {
-        global_tape.reset();
+        tape().reset();
         
         ADouble total_loss(0.0);
 
         // Accumulate loss across the batch
-        for (size_t i = 0; i < X.size(); ++i) {
+        for (std::size_t i = 0; i < X.size(); ++i) {
             ADouble y_pred = A.var() * sin(B.var() * X[i] + C.var());
             
             ADouble diff = y_pred - Y[i];
@@ -48,7 +49,7 @@ int main() {
         total_loss = total_loss / static_cast<double>(X.size());
 
         // Backpropagate
-        global_tape.compute_adjoints(total_loss.id);
+        tape().compute_adjoints(total_loss.id);
 
         // Apply Gradients using Vanilla SGD
         A.update(learning_rate);
@@ -69,5 +70,6 @@ int main() {
     std::cout << "Final Discovered Equation: y = " 
               << A.val << " * sin(" << B.val << " * x + " << C.val << ")" << std::endl;
 
+    tape().release();
     return 0;
 }

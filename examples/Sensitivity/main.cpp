@@ -1,105 +1,92 @@
+#include <cstddef>
+#include <iomanip>
 #include <iostream>
 #include <vector>
-#include <iomanip>
-#include "../../inc/ad_core.hpp" 
 
-using ad_type = ADouble; 
+#include "ad_core.hpp"
+
+using ad_type = ADouble;
 
 int main() {
-    int n = 3;
-    
-    // 1. Initialize the Matrix A (Constant standard doubles)
-    std::vector<std::vector<double>> A = {
-        { 2.0, -1.0, -2.0},
-        {-4.0,  6.0,  3.0},
-        {-4.0, -2.0,  8.0}
-    };
+    const std::size_t n = 3;
 
-    // 2. Initialize the Vector b as Independent AD Variables
-    std::vector<ad_type> b(n);
-    b[0] = ad_type(1.0);
-    b[1] = ad_type(2.0);
-    b[2] = ad_type(3.0);
+    // 1. Matrix A (constant standard doubles)
+    std::vector<std::vector<double>> A = {{2.0, -1.0, -2.0}, {-4.0, 6.0, 3.0}, {-4.0, -2.0, 8.0}};
 
-    // 3. Allocate L and U matrices
+    // 2. Vector b as independent AD variables
+    std::vector<ad_type> b;
+    b.reserve(n);
+    b.push_back(ad_type(1.0));
+    b.push_back(ad_type(2.0));
+    b.push_back(ad_type(3.0));
+
+    // 3. L and U in plain doubles (A is constant, so it needs no tape nodes)
     std::vector<std::vector<double>> L(n, std::vector<double>(n, 0.0));
     std::vector<std::vector<double>> U(n, std::vector<double>(n, 0.0));
 
-    // 4. Perform LU Decomposition on Matrix A
-    for (int i = 0; i < n; i++) {
-        // Upper Triangular
-        for (int k = i; k < n; k++) {
+    // 4. LU decomposition of A
+    for (std::size_t i = 0; i < n; i++) {
+        for (std::size_t k = i; k < n; k++) {
             double sum = 0.0;
-            for (int j = 0; j < i; j++) {
-                sum += (L[i][j] * U[j][k]);
-            }
+            for (std::size_t j = 0; j < i; j++) sum += (L[i][j] * U[j][k]);
             U[i][k] = A[i][k] - sum;
         }
-        // Lower Triangular
-        for (int k = i; k < n; k++) {
+        if (U[i][i] == 0.0) {
+            std::cerr << "Zero pivot at row " << i << "; A needs pivoting.\n";
+            return 1;
+        }
+        for (std::size_t k = i; k < n; k++) {
             if (i == k) {
-                L[i][i] = 1.0; 
+                L[i][i] = 1.0;
             } else {
                 double sum = 0.0;
-                for (int j = 0; j < i; j++) {
-                    sum += (L[k][j] * U[j][i]);
-                }
+                for (std::size_t j = 0; j < i; j++) sum += (L[k][j] * U[j][i]);
                 L[k][i] = (A[k][i] - sum) / U[i][i];
             }
         }
     }
 
-    // 5. Forward Substitution (L * y = b)
-    // The AD tape begins tracking operations here
+    // 5. Forward substitution (L * y = b). The tape starts tracking here.
     std::vector<ad_type> y(n);
-    for (int i = 0; i < n; i++) {
+    for (std::size_t i = 0; i < n; i++) {
         ad_type sum = ad_type(0.0);
-        for (int j = 0; j < i; j++) {
-            sum = sum + (y[j] * L[i][j]);
-        }
-        y[i] = b[i] - sum;
+        for (std::size_t j = 0; j < i; j++) sum = sum + (y[j] * L[i][j]);
+        y[i] = b[i] - sum;  // L[i][i] == 1
     }
 
-    // 6. Backward Substitution (U * x = y)
+    // 6. Backward substitution (U * x = y)
     std::vector<ad_type> x(n);
-    for (int i = n - 1; i >= 0; i--) {
+    for (std::size_t i = n; i-- > 0;) {
         ad_type sum = ad_type(0.0);
-        for (int j = i + 1; j < n; j++) {
-            sum = sum + (x[j] * U[i][j]);
-        }
+        for (std::size_t j = i + 1; j < n; j++) sum = sum + (x[j] * U[i][j]);
         x[i] = (y[i] - sum) / U[i][i];
     }
 
-    // 7. Output the computed vector x
+    // 7. Solution vector
     std::cout << "--- Solution Vector (x) ---\n";
-    for (int i = 0; i < n; i++) {
-        // Replace .value() with your API's method to get the raw float/double
-        std::cout << "x[" << i << "] = " << x[i].val << "\n";
+    for (std::size_t i = 0; i < n; i++) {
+        std::cout << "x[" << i << "] = " << x[i] << "\n";
     }
     std::cout << "\n";
 
-    // 8. Compute and Output the Jacobian (dx/db)
-    // Since Ax = b, the Jacobian dx/db should exactly equal A_inverse
-    
+    // 8. Jacobian dx/db. Since Ax = b, it should equal A inverse.
     std::vector<std::vector<double>> jacobian(n, std::vector<double>(n, 0.0));
-    
+
     std::cout << "--- Jacobian Matrix (dx/db) ---\n";
-    for (int i = 0; i < n; ++i) {
-        
-        // A. Trigger reverse-mode AD pass for the i-th element.[cite: 3]
-        global_tape.compute_adjoints(x[i].id); 
+    for (std::size_t i = 0; i < n; ++i) {
+        // One reverse sweep per output component.
+        tape().compute_adjoints(x[i].id);
 
         std::cout << "[";
-        // B. Extract the sensitivities (gradients) with respect to each input element of vector b
-        for (int j = 0; j < n; ++j) {
-            jacobian[i][j] = global_tape.adjoints[b[j].id]; //[cite: 3]
-            
-            // Print the extracted gradient element for the Jacobian row
+        for (std::size_t j = 0; j < n; ++j) {
+            jacobian[i][j] = b[j].grad();  // bounds-checked adjoint lookup
+
             std::cout << std::fixed << std::setprecision(4) << std::setw(10) << jacobian[i][j];
             if (j < n - 1) std::cout << ", ";
         }
         std::cout << " ]\n";
-    }    
-    
+    }
+
+    tape().release();
     return 0;
 }
